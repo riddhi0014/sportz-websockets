@@ -1,0 +1,20 @@
+GET http://localhost:8000/
+
+
+###
+POST http://localhost:8000/matches
+Content-Type: application/json
+
+{
+  "sport": "Football",
+  "homeTeam": "Barcelona",
+  "awayTeam": "Real Madrid",
+  "startTime": "2026-08-01T18:00:00Z",
+  "endTime": "2026-08-01T20:00:00Z"
+}
+
+### List Matches
+GET http://localhost:8000/matches
+
+### Get Match by ID
+GET http://localhost:8000/matches/2
