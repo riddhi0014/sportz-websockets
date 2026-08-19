@@ -6,9 +6,9 @@ POST http://localhost:8000/matches
 Content-Type: application/json
 
 {
-  "sport": "Football",
-  "homeTeam": "Barcelona",
-  "awayTeam": "Real Madrid",
+  "sport": "Cricket",
+  "homeTeam": "England",
+  "awayTeam": "Norway",
   "startTime": "2026-08-01T18:00:00Z",
   "endTime": "2026-08-01T20:00:00Z"
 }
