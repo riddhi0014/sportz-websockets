@@ -7,8 +7,8 @@ Content-Type: application/json
 
 {
   "sport": "Cricket",
-  "homeTeam": "RCB",
-  "awayTeam": "CSK",
+  "homeTeam": "England",
+  "awayTeam": "Norway",
   "startTime": "2026-08-01T18:00:00Z",
   "endTime": "2026-08-01T20:00:00Z"
 }

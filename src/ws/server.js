@@ -11,7 +11,7 @@ function broadcast(wss,payload)                 //helper function
 {
   for(const client of wss.clients)
   {
-    if(client.readyState!=WebSocket.OPEN) return;
+    if(client.readyState!=WebSocket.OPEN) continue;
     client.send(JSON.stringify(payload));
   }
 }
@@ -27,10 +27,38 @@ export function attachWebSocketServer(server)  //the main function which enables
     }
   )
 
-  wss.on('connection', (socket) =>{
-    sendJSON(socket, {type: 'welcome'}); 
-    socket.on('error', console.error);
-  });
+   wss.on('connection', async (socket, req) => {
+        socket.isAlive = true;
+        socket.on('pong', () => { socket.isAlive = true; });
+
+        socket.subscriptions = new Set();
+
+        sendJSON(socket, { type: 'welcome' });
+
+        socket.on('message', (data) => {
+            handleMessage(socket, data);
+        });
+
+        socket.on('error', () => {
+            socket.terminate();
+        });
+
+        socket.on('close', () => {
+            cleanupSubscriptions(socket);
+        })
+
+        socket.on('error', console.error);
+    });
+
+    const interval = setInterval(() => {
+      wss.clients.forEach((ws) => {
+          if (ws.isAlive === false) return ws.terminate();
+
+          ws.isAlive = false;
+          ws.ping();
+      })}, 30000);
+
+  wss.on('close', () => clearInterval(interval));
 
   function broadcastMatchCreated(match)
   {
