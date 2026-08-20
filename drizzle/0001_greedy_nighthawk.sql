@@ -1,0 +1,1 @@
+ALTER TABLE "commentary" RENAME COLUMN "tags[]" TO "tags";

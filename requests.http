@@ -6,9 +6,9 @@ POST http://localhost:8000/matches
 Content-Type: application/json
 
 {
-  "sport": "Cricket",
-  "homeTeam": "England",
-  "awayTeam": "Norway",
+  "sport": "Badminton",
+  "homeTeam": "India",
+  "awayTeam": "England",
   "startTime": "2026-08-01T18:00:00Z",
   "endTime": "2026-08-01T20:00:00Z"
 }
@@ -16,5 +16,22 @@ Content-Type: application/json
 ### List Matches
 GET http://localhost:8000/matches
 
-### Get Match by ID
-GET http://localhost:8000/matches/2
+### Post commentary by match id
+POST http://localhost:8000/matches/7/commentary
+Content-Type: application/json
+
+  {
+    "minute": 45,
+    "sequence": 1,
+    "period": "First Half",
+    "eventType": "Goal",
+    "actor": "Player Name",
+    "team": "Team A",
+    "message": "Player Name scored a stunning goal!",
+    "metadata": {
+      "assistBy": "Player B",
+      "distance": "20 yards"
+    },
+    "tags": ["goal", "highlight"]
+  }
+

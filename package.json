@@ -16,11 +16,16 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@arcjet/inspect": "^1.10.0",
+    "@arcjet/node": "^1.10.0",
     "@neondatabase/serverless": "^1.1.0",
+    "apminsight": "^5.5.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.6.2",
     "pg": "^8.22.0",
+    "psql": "^0.0.1",
     "ws": "^8.21.2",
     "zod": "^4.4.3"
   },

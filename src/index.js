@@ -2,6 +2,9 @@ import express from 'express';
 import { matchesRouter } from './routes/matches.js';
 import http from 'http';
 import { attachWebSocketServer } from './ws/server.js';
+import { generalLimiter } from './middleware/rateLimit.js';
+import { botShield } from './middleware/botShield.js';
+
 
 
 const PORT = Number(process.env.PORT) || 8000;
@@ -13,15 +16,21 @@ const server=http.createServer(app);
 // Middleware to parse JSON
 app.use(express.json());
 
+app.use(botShield);
+app.use(generalLimiter);
+
 // Root GET route
 app.get('/', (req, res) => {
   res.send({ message: 'Welcome to the Express server!' });
 });
 
+
 app.use('/matches',matchesRouter);
 
-const {broadcastMatchCreated}= attachWebSocketServer(server);
+
+const {broadcastMatchCreated, broadcastCommentary}= attachWebSocketServer(server);
 app.locals.broadcastMatchCreated = broadcastMatchCreated;
+app.locals.broadcastCommentary = broadcastCommentary;
 
 // Start the server
 server.listen(PORT,HOST, () => {
