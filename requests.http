@@ -17,7 +17,7 @@ Content-Type: application/json
 GET http://localhost:8000/matches
 
 ### Post commentary by match id
-POST http://localhost:8000/matches/7/commentary
+POST http://localhost:8000/matches/1/commentary
 Content-Type: application/json
 
   {
@@ -26,8 +26,8 @@ Content-Type: application/json
     "period": "First Half",
     "eventType": "Goal",
     "actor": "Player Name",
-    "team": "Team A",
-    "message": "Player Name scored a stunning goal!",
+    "team": "Team B",
+    "message": "Yayyyy!",
     "metadata": {
       "assistBy": "Player B",
       "distance": "20 yards"
