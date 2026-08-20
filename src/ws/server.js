@@ -25,6 +25,7 @@ function unsubscribe(matchId, socket) {
 }
 
 function cleanupSubscriptions(socket) {
+    if (!socket.subscriptions) return;
     for(const matchId of socket.subscriptions) {
         unsubscribe(matchId, socket);
     }
@@ -45,7 +46,8 @@ function broadcastToAll(wss, payload) {
 }
 
 function broadcastToMatch(matchId, payload) {
-    const subscribers = matchSubscribers.get(matchId);
+    const numericMatchId = Number(matchId);
+    const subscribers = matchSubscribers.get(numericMatchId);
     if(!subscribers || subscribers.size === 0) return;
 
     const message = JSON.stringify(payload);
@@ -63,20 +65,48 @@ function handleMessage(socket, data) {
     try {
         message = JSON.parse(data.toString());
     } catch {
-        sendJson(socket, { type: 'error', message: 'Invalid JSON' });
-    }
-
-    if(message?.type === "subscribe" && Number.isInteger(message.matchId)) {
-        subscribe(message.matchId, socket);
-        socket.subscriptions.add(message.matchId);
-        sendJson(socket, { type: 'subscribed', matchId: message.matchId });
+        sendJson(socket, { type: 'error', code: 'INVALID_JSON', message: 'Invalid JSON payload' });
         return;
     }
 
-    if(message?.type === "unsubscribe" && Number.isInteger(message.matchId)) {
-        unsubscribe(message.matchId, socket);
-        socket.subscriptions.delete(message.matchId);
-        sendJson(socket, { type: 'unsubscribed', matchId: message.matchId });
+    if (message?.type === "subscribe") {
+        const matchId = Number(message.matchId);
+        if (Number.isInteger(matchId)) {
+            subscribe(matchId, socket);
+            socket.subscriptions.add(matchId);
+            sendJson(socket, { type: 'subscribed', matchId });
+        } else {
+            sendJson(socket, { type: 'error', code: 'INVALID_MATCH_ID', message: 'matchId must be an integer' });
+        }
+        return;
+    }
+
+    if (message?.type === "unsubscribe") {
+        const matchId = Number(message.matchId);
+        if (Number.isInteger(matchId)) {
+            unsubscribe(matchId, socket);
+            socket.subscriptions.delete(matchId);
+            sendJson(socket, { type: 'unsubscribed', matchId });
+        } else {
+            sendJson(socket, { type: 'error', code: 'INVALID_MATCH_ID', message: 'matchId must be an integer' });
+        }
+        return;
+    }
+
+    if (message?.type === "setSubscriptions" && Array.isArray(message.matchIds)) {
+        cleanupSubscriptions(socket);
+        socket.subscriptions.clear();
+        const subscribed = [];
+        for (const rawId of message.matchIds) {
+            const mId = Number(rawId);
+            if (Number.isInteger(mId)) {
+                subscribe(mId, socket);
+                socket.subscriptions.add(mId);
+                subscribed.push(mId);
+            }
+        }
+        sendJson(socket, { type: 'subscriptions', matchIds: subscribed });
+        return;
     }
 }
 
@@ -119,6 +149,7 @@ export function attachWebSocketServer(server)  //the main function which enables
   const connectionCounts = new Map(); // ip -> active connection count
 
    wss.on('connection', async (socket, req) => {
+        socket.subscriptions = new Set();
 
         const ip = req.socket.remoteAddress;
         const currentCount = connectionCounts.get(ip) || 0;
@@ -131,8 +162,6 @@ export function attachWebSocketServer(server)  //the main function which enables
 
         socket.isAlive = true;
         socket.on('pong', () => { socket.isAlive = true; });
-
-        socket.subscriptions = new Set();
 
         sendJson(socket, { type: 'welcome' });
 
@@ -172,5 +201,9 @@ export function attachWebSocketServer(server)  //the main function which enables
     broadcastToMatch(matchId, { type: 'commentary', data: comment });
 }
 
-return { broadcastMatchCreated, broadcastCommentary };
+function broadcastScoreUpdate(matchId, data) {
+    broadcastToMatch(matchId, { type: 'score_update', matchId, data });
+}
+
+return { broadcastMatchCreated, broadcastCommentary, broadcastScoreUpdate };
 }

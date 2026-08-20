@@ -1,5 +1,5 @@
-const DEFAULT_API_BASE_URL = "http://localhost:3000";
-const DEFAULT_WS_BASE_URL = "ws://localhost:3000/ws";
+const DEFAULT_API_BASE_URL = "http://localhost:8000";
+const DEFAULT_WS_BASE_URL = "ws://localhost:8000/ws";
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL;

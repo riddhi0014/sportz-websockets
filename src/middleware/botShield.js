@@ -9,6 +9,11 @@ const BLOCKED_UA_PATTERNS = [
 // Allow legitimate bots you actually want, e.g. your own health checks,
 // by exempting specific known-good UAs or an API key header here.
 export function botShield(req, res, next) {
+  // Allow explicit bypass header for local internal simulation scripts if present
+  if (req.get('x-bypass-bot-shield') === 'true') {
+    return next();
+  }
+
   const ua = req.get('user-agent') || '';
 
   if (!ua.trim()) {

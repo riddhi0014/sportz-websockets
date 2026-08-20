@@ -41,3 +41,31 @@ export const fetchMatchCommentary = async (
     throw error;
   }
 };
+
+export const fetchSimulationStatus = async (): Promise<{ active: boolean }> => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/simulation/status`);
+    if (!res.ok) return { active: false };
+    return await res.json();
+  } catch {
+    return { active: false };
+  }
+};
+
+export const startSimulation = async (): Promise<{ active: boolean; message: string }> => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/simulation/start`, { method: "POST" });
+    return await res.json();
+  } catch {
+    return { active: false, message: "Failed to start simulation" };
+  }
+};
+
+export const stopSimulation = async (): Promise<{ active: boolean; message: string }> => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/simulation/stop`, { method: "POST" });
+    return await res.json();
+  } catch {
+    return { active: false, message: "Failed to stop simulation" };
+  }
+};

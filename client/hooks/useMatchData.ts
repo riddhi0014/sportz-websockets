@@ -12,6 +12,10 @@ interface UseMatchData {
   wsError: string | null;
   status: ReturnType<typeof useWebSocket>["status"];
   activeMatchId: string | number | null;
+  subscribedMatchIds: Set<string>;
+  toggleSubscription: (id: string | number) => void;
+  subscribeMatch: (id: string | number) => void;
+  unsubscribeMatch: (id: string | number) => void;
   newMatchesCount: number;
   dismissNewMatches: () => void;
   watchMatch: (id: string | number) => void;
@@ -28,6 +32,7 @@ export const useMatchData = (): UseMatchData => {
   const [wsError, setWsError] = useState<string | null>(null);
   const [activeMatchId, setActiveMatchId] = useState<string | number | null>(null);
   const [newMatchesCount, setNewMatchesCount] = useState(0);
+  const [subscribedMatchIds, setSubscribedMatchIds] = useState<Set<string>>(new Set());
   const latestMatchIdRef = useRef<string | number | null>(null);
   const subscribedMatchIdsRef = useRef(new Set<string>());
   const hasLoadedRef = useRef(false);
@@ -36,13 +41,23 @@ export const useMatchData = (): UseMatchData => {
 
   const handleWSMessage = useCallback((msg: WSMessage) => {
     switch (msg.type) {
+      case "matchCreated":
+        if (msg.data) {
+          setMatches((prev) => {
+            const exists = prev.some((m) => String(m.id) === String(msg.data.id));
+            if (exists) return prev;
+            return [msg.data, ...prev];
+          });
+          setNewMatchesCount((prev) => prev + 1);
+        }
+        break;
       case "score_update":
+        // Strict Pub/Sub: Only process score updates for subscribed matches
         if (!subscribedMatchIdsRef.current.has(String(msg.matchId))) {
           return;
         }
         setMatches((prevMatches) =>
           prevMatches.map((m) => {
-            // Loose equality check for ID (string vs number)
             // eslint-disable-next-line eqeqeq
             if (m.id == msg.matchId) {
               return {
@@ -56,8 +71,13 @@ export const useMatchData = (): UseMatchData => {
         );
         break;
       case "commentary": {
+        // Strict Pub/Sub: Only process commentary for subscribed matches
+        if (!subscribedMatchIdsRef.current.has(String(msg.data.matchId))) {
+          return;
+        }
         if (
           latestMatchIdRef.current == null ||
+          // eslint-disable-next-line eqeqeq
           msg.data.matchId != latestMatchIdRef.current
         ) {
           return;
@@ -88,9 +108,58 @@ export const useMatchData = (): UseMatchData => {
   const {
     status,
     connectGlobal,
-    subscribeMatch,
-    unsubscribeMatch,
+    subscribeMatch: wsSubscribeMatch,
+    unsubscribeMatch: wsUnsubscribeMatch,
   } = useWebSocket(handleWSMessage);
+
+  const subscribeMatch = useCallback(
+    (id: string | number) => {
+      const matchId = String(id);
+      subscribedMatchIdsRef.current.add(matchId);
+      setSubscribedMatchIds((prev) => new Set(prev).add(matchId));
+      wsSubscribeMatch(id);
+    },
+    [wsSubscribeMatch]
+  );
+
+  const unsubscribeMatch = useCallback(
+    (id: string | number) => {
+      const matchId = String(id);
+      subscribedMatchIdsRef.current.delete(matchId);
+      setSubscribedMatchIds((prev) => {
+        const next = new Set(prev);
+        next.delete(matchId);
+        return next;
+      });
+      wsUnsubscribeMatch(id);
+    },
+    [wsUnsubscribeMatch]
+  );
+
+  const toggleSubscription = useCallback(
+    (id: string | number) => {
+      const matchId = String(id);
+      if (subscribedMatchIdsRef.current.has(matchId)) {
+        unsubscribeMatch(id);
+      } else {
+        subscribeMatch(id);
+      }
+    },
+    [subscribeMatch, unsubscribeMatch]
+  );
+
+const FINISHED_RETENTION_MS = 5 * 60 * 1000; // 5 minutes grace period after ending
+
+const isMatchExpired = (match: Match, now = new Date()): boolean => {
+  const statusLower = (match.status || '').toLowerCase();
+  if (statusLower === 'finished' && match.endTime) {
+    const endMs = new Date(match.endTime).getTime();
+    if (!isNaN(endMs) && now.getTime() > endMs + FINISHED_RETENTION_MS) {
+      return true;
+    }
+  }
+  return false;
+};
 
   const loadMatches = useCallback(async () => {
     if (!hasLoadedRef.current) {
@@ -99,25 +168,43 @@ export const useMatchData = (): UseMatchData => {
     setError(null);
     try {
       const data = await fetchMatches(100);
-      const nextMatches = data.data || [];
+      const rawMatches = data.data || [];
+      const now = new Date();
+      // Filter out matches that ended more than 5 minutes ago
+      const nextMatches = rawMatches.filter((m) => !isMatchExpired(m, now));
       const nextMatchIds = new Set(nextMatches.map((match) => String(match.id)));
       setMatches((prevMatches) => {
-        const prevById = new Map(
+        const prevById = new Map<string, Match>(
           prevMatches.map((match) => [String(match.id), match])
         );
         return nextMatches.map((match) => {
           const matchId = String(match.id);
           const prev = prevById.get(matchId);
-          if (prev && !subscribedMatchIdsRef.current.has(matchId)) {
+          const isSubscribed = subscribedMatchIdsRef.current.has(matchId);
+          if (prev && isSubscribed) {
             return {
               ...match,
-              homeScore: prev.homeScore,
-              awayScore: prev.awayScore,
+              homeScore: Math.max(match.homeScore, prev.homeScore),
+              awayScore: Math.max(match.awayScore, prev.awayScore),
             };
           }
           return match;
         });
       });
+
+      // Cleanup active match if it expired past 5-minute retention window
+      if (latestMatchIdRef.current) {
+        const activeStillExists = nextMatches.some(
+          // eslint-disable-next-line eqeqeq
+          (m) => m.id == latestMatchIdRef.current
+        );
+        if (!activeStillExists) {
+          setActiveMatchId(null);
+          latestMatchIdRef.current = null;
+          setCommentary([]);
+          setIsCommentaryLoading(false);
+        }
+      }
       if (knownMatchIdsRef.current.size > 0) {
         let newCount = 0;
         nextMatchIds.forEach((matchId) => {
@@ -137,20 +224,6 @@ export const useMatchData = (): UseMatchData => {
         }
       }
       knownMatchIdsRef.current = nextMatchIds;
-
-      nextMatches.forEach((match) => {
-        const matchId = String(match.id);
-        if (subscribedMatchIdsRef.current.has(matchId) && match.status.toLowerCase() === "finished") {
-          subscribedMatchIdsRef.current.delete(matchId);
-          unsubscribeMatch(match.id);
-          if (latestMatchIdRef.current == match.id) {
-            setActiveMatchId(null);
-            latestMatchIdRef.current = null;
-            setCommentary([]);
-            setIsCommentaryLoading(false);
-          }
-        }
-      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load matches";
       setError(msg);
@@ -160,7 +233,7 @@ export const useMatchData = (): UseMatchData => {
         hasLoadedRef.current = true;
       }
     }
-  }, [unsubscribeMatch]);
+  }, []);
 
   useEffect(() => {
     loadMatches();
@@ -203,40 +276,35 @@ export const useMatchData = (): UseMatchData => {
       setIsCommentaryLoading(true);
       setWsError(null);
       latestMatchIdRef.current = id;
-      if (activeMatchId != null && activeMatchId != id) {
-        const previousId = String(activeMatchId);
-        subscribedMatchIdsRef.current.delete(previousId);
-        unsubscribeMatch(activeMatchId);
-      }
       setActiveMatchId(id);
-      const matchId = String(id);
-      subscribedMatchIdsRef.current.add(matchId);
       subscribeMatch(id);
+
       fetchMatchCommentary(id)
         .then((data) => {
+          // eslint-disable-next-line eqeqeq
           if (latestMatchIdRef.current == id) {
             setCommentary(data.data || []);
           }
         })
         .catch(() => {
+          // eslint-disable-next-line eqeqeq
           if (latestMatchIdRef.current == id) {
             setCommentary([]);
           }
         })
         .finally(() => {
+          // eslint-disable-next-line eqeqeq
           if (latestMatchIdRef.current == id) {
             setIsCommentaryLoading(false);
           }
         });
     },
-    [activeMatchId, subscribeMatch, unsubscribeMatch]
+    [subscribeMatch]
   );
 
   const unwatchMatch = useCallback(
     (id: string | number) => {
-      unsubscribeMatch(id);
-      const matchId = String(id);
-      subscribedMatchIdsRef.current.delete(matchId);
+      // eslint-disable-next-line eqeqeq
       if (activeMatchId == id) {
         setActiveMatchId(null);
         latestMatchIdRef.current = null;
@@ -244,7 +312,7 @@ export const useMatchData = (): UseMatchData => {
         setIsCommentaryLoading(false);
       }
     },
-    [activeMatchId, unsubscribeMatch]
+    [activeMatchId]
   );
 
   return {
@@ -256,6 +324,10 @@ export const useMatchData = (): UseMatchData => {
     wsError,
     status,
     activeMatchId,
+    subscribedMatchIds,
+    toggleSubscription,
+    subscribeMatch,
+    unsubscribeMatch,
     newMatchesCount,
     dismissNewMatches,
     watchMatch,

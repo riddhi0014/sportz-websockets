@@ -19,6 +19,15 @@ export function getMatchStatus(startTime, endTime, now = new Date()) {
     return MATCH_STATUS.LIVE;
 }
 
+export const FINISHED_RETENTION_MS = 5 * 60 * 1000; // 5 minutes grace period after ending
+
+export function isMatchExpired(match, now = new Date()) {
+    if (!match.endTime) return false;
+    const end = new Date(match.endTime).getTime();
+    if (Number.isNaN(end)) return false;
+    return now.getTime() > end + FINISHED_RETENTION_MS;
+}
+
 export async function syncMatchStatus(match, updateStatus) {
     const nextStatus = getMatchStatus(match.startTime, match.endTime);
     if (!nextStatus) {

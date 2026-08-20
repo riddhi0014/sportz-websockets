@@ -12,8 +12,23 @@ const HOST = process.env.HOST || '0.0.0.0';
 const app = express();
 const server=http.createServer(app);
 
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173'
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, postman)
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
 }));
 // Middleware to parse JSON
 app.use(express.json());
@@ -27,12 +42,16 @@ app.get('/', (req, res) => {
 });
 
 
-app.use('/matches',matchesRouter);
+import { simulationRouter } from './routes/simulation.js';
+
+app.use('/matches', matchesRouter);
+app.use('/simulation', simulationRouter);
 
 
-const {broadcastMatchCreated, broadcastCommentary}= attachWebSocketServer(server);
+const { broadcastMatchCreated, broadcastCommentary, broadcastScoreUpdate } = attachWebSocketServer(server);
 app.locals.broadcastMatchCreated = broadcastMatchCreated;
 app.locals.broadcastCommentary = broadcastCommentary;
+app.locals.broadcastScoreUpdate = broadcastScoreUpdate;
 
 // Start the server
 server.listen(PORT,HOST, () => {

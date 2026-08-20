@@ -4,11 +4,20 @@ import { Match } from '../types';
 interface MatchCardProps {
   match: Match;
   isActive: boolean;
+  isSubscribed: boolean;
   onWatch: (id: string | number) => void;
   onUnwatch: (id: string | number) => void;
+  onToggleSubscribe: (id: string | number) => void;
 }
 
-export const MatchCard: React.FC<MatchCardProps> = ({ match, isActive, onWatch, onUnwatch }) => {
+export const MatchCard: React.FC<MatchCardProps> = ({
+  match,
+  isActive,
+  isSubscribed,
+  onWatch,
+  onUnwatch,
+  onToggleSubscribe,
+}) => {
   // Handle case-insensitive status check from API
   const statusLower = match.status.toLowerCase();
   const isLive = statusLower === 'live';
@@ -64,19 +73,37 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, isActive, onWatch, 
     };
   }, [match.homeScore, match.awayScore]);
   
-  // Format status for display (Capitalize first letter)
-  const displayStatus = match.status.charAt(0).toUpperCase() + match.status.slice(1).toLowerCase();
+  // Format status for display (Capitalize first letter, show "Match Ended" when finished)
+  const displayStatus = statusLower === 'finished' 
+    ? 'Match Ended' 
+    : match.status.charAt(0).toUpperCase() + match.status.slice(1).toLowerCase();
 
   return (
     <div className={`
       relative p-5 rounded-2xl border-2 border-black bg-white transition-all duration-200
       ${isActive ? 'shadow-hard translate-x-[-2px] translate-y-[-2px] ring-2 ring-brand-yellow ring-offset-2' : 'hover:shadow-hard-sm'}
     `}>
-      {/* Header: Sport & Status */}
+      {/* Header: Sport, Status & Subscribe Toggle */}
       <div className="flex justify-between items-start mb-4">
-        <span className="text-xs font-bold uppercase tracking-wider text-gray-500 border border-black rounded-full px-2 py-0.5">
-          {match.sport}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-500 border border-black rounded-full px-2 py-0.5">
+            {match.sport}
+          </span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSubscribe(match.id);
+            }}
+            className={`text-xs font-bold px-2.5 py-0.5 rounded-full border border-black transition-all ${
+              isSubscribed
+                ? 'bg-green-300 text-black hover:bg-green-400'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+            title={isSubscribed ? 'Click to unsubscribe' : 'Click to subscribe for live updates'}
+          >
+            {isSubscribed ? '✓ Subscribed' : '+ Subscribe'}
+          </button>
+        </div>
         <div className="flex items-center gap-2">
           {isLive && (
             <span className="flex h-3 w-3 relative">
@@ -87,6 +114,11 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, isActive, onWatch, 
           <span className={`text-sm font-medium ${isLive ? 'text-red-600' : 'text-gray-600'}`}>
             {displayStatus}
           </span>
+          {statusLower === 'finished' && match.endTime && (
+            <span className="text-[10px] font-mono bg-gray-100 border border-gray-300 text-gray-600 px-1.5 py-0.5 rounded" title="This ended match will auto-remove after 5 minutes">
+              5m Retention Window
+            </span>
+          )}
         </div>
       </div>
 

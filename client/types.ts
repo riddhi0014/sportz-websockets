@@ -89,9 +89,15 @@ export interface WSMessageUnsubscribedAll {
   type: 'unsubscribed_all';
 }
 
+export interface WSMessageMatchCreated {
+  type: 'matchCreated';
+  data: Match;
+}
+
 export type WSMessage =
   | WSMessageCommentary
   | WSMessageScore
+  | WSMessageMatchCreated
   | WSMessageWelcome
   | WSMessagePong
   | WSMessageError

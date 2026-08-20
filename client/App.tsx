@@ -3,11 +3,15 @@ import { useMatchData } from './hooks/useMatchData';
 import { MatchCard } from './components/MatchCard';
 import { LiveFeed } from './components/LiveFeed';
 import { StatusIndicator } from './components/StatusIndicator';
-import { API_BASE_URL, WS_BASE_URL } from './constants';
+import { fetchSimulationStatus, startSimulation, stopSimulation } from './services/api';
 
 const App: React.FC = () => {
   const pageSize = 6;
   const [currentPage, setCurrentPage] = useState(1);
+  const [filterMode, setFilterMode] = useState<'all' | 'subscribed'>('all');
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [isSimLoading, setIsSimLoading] = useState(false);
+
   const {
     matches,
     isLoading,
@@ -17,6 +21,9 @@ const App: React.FC = () => {
     wsError,
     status,
     activeMatchId,
+    subscribedMatchIds,
+    toggleSubscription,
+    subscribeMatch,
     newMatchesCount,
     dismissNewMatches,
     watchMatch,
@@ -24,7 +31,35 @@ const App: React.FC = () => {
     reloadMatches,
   } = useMatchData();
 
-  const totalPages = Math.max(1, Math.ceil(matches.length / pageSize));
+  useEffect(() => {
+    fetchSimulationStatus().then((res) => setIsSimulating(res.active));
+  }, []);
+
+  const handleToggleSimulation = async () => {
+    setIsSimLoading(true);
+    try {
+      if (isSimulating) {
+        const res = await stopSimulation();
+        setIsSimulating(res.active);
+      } else {
+        const res = await startSimulation();
+        setIsSimulating(res.active);
+        // Reload matches so freshly seeded demo matches load onto the screen
+        reloadMatches();
+      }
+    } finally {
+      setIsSimLoading(false);
+    }
+  };
+
+  const filteredMatches = useMemo(() => {
+    if (filterMode === 'subscribed') {
+      return matches.filter((m) => subscribedMatchIds.has(String(m.id)));
+    }
+    return matches;
+  }, [matches, filterMode, subscribedMatchIds]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredMatches.length / pageSize));
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -34,8 +69,8 @@ const App: React.FC = () => {
 
   const pagedMatches = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
-    return matches.slice(startIndex, startIndex + pageSize);
-  }, [matches, currentPage, pageSize]);
+    return filteredMatches.slice(startIndex, startIndex + pageSize);
+  }, [filteredMatches, currentPage, pageSize]);
 
   return (
     <div className="min-h-screen p-4 md:p-8 font-sans">
@@ -45,17 +80,30 @@ const App: React.FC = () => {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-brand-yellow border-2 border-black rounded-2xl p-6 shadow-hard">
           <div>
             <h1 className="text-3xl font-black tracking-tight text-brand-dark mb-1">
-              Spotrz
+              Sportz
             </h1>
-            <p className="text-sm font-medium opacity-80">Real-time match data demo</p>
+            <p className="text-sm font-medium opacity-80">Real-time match data dashboard</p>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <StatusIndicator status={status} />
-            {wsError && (
-              <span className="text-xs font-mono bg-red-100 text-red-700 border border-red-200 px-2 py-1 rounded">
-                WS: {wsError}
-              </span>
-            )}
+          <div className="flex flex-col md:flex-row items-end md:items-center gap-3">
+            <button
+              onClick={handleToggleSimulation}
+              disabled={isSimLoading}
+              className={`px-4 py-2 rounded-xl font-bold text-xs border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
+                isSimulating
+                  ? 'bg-red-500 text-white animate-pulse hover:bg-red-600'
+                  : 'bg-white text-black hover:bg-gray-100'
+              }`}
+            >
+              {isSimLoading ? '...' : isSimulating ? '⚡ Demo Mode: ACTIVE (Stop)' : '⚡ Start Live Demo'}
+            </button>
+            <div className="flex flex-col items-end gap-1">
+              <StatusIndicator status={status} />
+              {wsError && (
+                <span className="text-xs font-mono bg-red-100 text-red-700 border border-red-200 px-2 py-1 rounded">
+                  WS: {wsError}
+                </span>
+              )}
+            </div>
           </div>
         </header>
 
@@ -64,10 +112,36 @@ const App: React.FC = () => {
           
           {/* Left Column: Match List */}
           <main className="lg:col-span-2 space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold border-l-4 border-brand-blue pl-3">Current Matches</h2>
-              <span className="text-xs font-mono bg-black text-white px-2 py-1 rounded">
-                API: {isLoading ? '...' : matches.length}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b-2 border-gray-200 pb-3">
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-bold border-l-4 border-brand-blue pl-3">Matches</h2>
+                <div className="flex bg-gray-100 p-1 rounded-xl border border-black">
+                  <button
+                    onClick={() => {
+                      setFilterMode('all');
+                      setCurrentPage(1);
+                    }}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                      filterMode === 'all' ? 'bg-black text-white' : 'text-gray-700 hover:text-black'
+                    }`}
+                  >
+                    All ({matches.length})
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFilterMode('subscribed');
+                      setCurrentPage(1);
+                    }}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                      filterMode === 'subscribed' ? 'bg-black text-white' : 'text-gray-700 hover:text-black'
+                    }`}
+                  >
+                    Subscribed ({subscribedMatchIds.size})
+                  </button>
+                </div>
+              </div>
+              <span className="text-xs font-mono bg-black text-white px-2.5 py-1 rounded">
+                API: {isLoading ? '...' : filteredMatches.length}
               </span>
             </div>
             {newMatchesCount > 0 && (
@@ -110,9 +184,16 @@ const App: React.FC = () => {
                </div>
             )}
 
-            {!isLoading && !error && matches.length === 0 && (
-              <div className="p-12 text-center border-2 border-black rounded-2xl bg-gray-50">
-                <p className="font-bold text-lg">No matches found</p>
+            {!isLoading && !error && filteredMatches.length === 0 && (
+              <div className="p-12 text-center border-2 border-black rounded-2xl bg-gray-50 space-y-2">
+                <p className="font-bold text-lg">
+                  {filterMode === 'subscribed' ? 'No Subscribed Matches' : 'No Matches Found'}
+                </p>
+                {filterMode === 'subscribed' && (
+                  <p className="text-sm text-gray-500">
+                    Click "+ Subscribe" on any match card to add it to your subscribed list!
+                  </p>
+                )}
               </div>
             )}
 
@@ -123,8 +204,10 @@ const App: React.FC = () => {
                   match={match} 
                   // eslint-disable-next-line eqeqeq
                   isActive={activeMatchId == match.id}
+                  isSubscribed={subscribedMatchIds.has(String(match.id))}
                   onWatch={watchMatch}
                   onUnwatch={unwatchMatch}
+                  onToggleSubscribe={toggleSubscription}
                 />
               ))}
             </div>
@@ -165,32 +248,6 @@ const App: React.FC = () => {
           </aside>
 
         </div>
-
-        {/* Documentation / Verification Section */}
-        <section className="mt-12 border-t-2 border-gray-200 pt-8">
-          <div className="bg-white border-2 border-black rounded-2xl p-6">
-            <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-              <span className="bg-black text-white w-6 h-6 flex items-center justify-center rounded-full text-xs">?</span>
-              Testing & Verification
-            </h3>
-            <div className="grid md:grid-cols-2 gap-8 text-sm text-gray-600">
-              <div>
-                <h4 className="font-bold text-black mb-2">Configuration</h4>
-                <ul className="list-disc list-inside space-y-1">
-                  <li>REST URL: <code className="bg-gray-100 px-1 rounded">{API_BASE_URL}</code></li>
-                  <li>WS URL: <code className="bg-gray-100 px-1 rounded">{WS_BASE_URL}</code></li>
-                  <li>Modify these in <code className="bg-gray-100 px-1 rounded">constants.ts</code></li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-bold text-black mb-2">How to Verify</h4>
-                <p className="mb-2">1. Click the action button on any card (it shows "Watch Live" for live games).</p>
-                <p className="mb-2">2. The status indicator top-right will turn green.</p>
-                <p>3. Wait for <code className="text-xs bg-gray-100 p-0.5 border border-gray-300 rounded">score_update</code> or <code className="text-xs bg-gray-100 p-0.5 border border-gray-300 rounded">commentary</code> events from the server. The card score updates instantly, and the right panel fills with text.</p>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
     </div>
   );
